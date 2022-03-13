@@ -55,6 +55,8 @@ func (elem *Element) Entry() *codec.Entry {
 
 func (list *SkipList) Add(data *codec.Entry) error {
 	//implement me here!!!
+	list.lock.Lock()
+	defer list.lock.Unlock()
 	prevElem := list.header
 
 	var prevHeaderListElem [defaultMaxLevel]*Element
@@ -97,19 +99,18 @@ func (list *SkipList) Add(data *codec.Entry) error {
 
 func (list *SkipList) Search(key []byte) (e *codec.Entry) {
 	//implement me here!!!
-
+	list.lock.RLock()
+	defer list.lock.RUnlock()
 	if list.length == 0 {
 		return nil
 	}
-
 	var prevElem *Element = list.header
 
 	i := len(list.header.levels) - 1
-
 	for i >= 0 {
-
+		// 查找每一层，进入下一层的条件为，findKey > next.entry.Key
+	L:
 		for next := prevElem.levels[i]; next != nil; next = prevElem.levels[i] {
-		L:
 			switch list.compare(list.calcScore(key), key, next) {
 			case 0:
 				return next.entry
