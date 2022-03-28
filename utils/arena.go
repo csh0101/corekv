@@ -1,10 +1,11 @@
 package utils
 
 import (
-	"github.com/pkg/errors"
 	"log"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 type Arena struct {
@@ -12,8 +13,9 @@ type Arena struct {
 	buf []byte
 }
 
+// MaxNodeSize
 const MaxNodeSize = int(unsafe.Sizeof(Element{}))
-
+const MaxHeight = 20
 const offsetSize = int(unsafe.Sizeof(uint32(0)))
 const nodeAlign = int(unsafe.Sizeof(uint64(0))) - 1
 
@@ -28,16 +30,56 @@ func newArena(n int64) *Arena {
 func (s *Arena) allocate(sz uint32) uint32 {
 	//implement me here！！！
 	// 在 arena 中分配指定大小的内存空间
-	return 0
+
+	//扩容逻辑
+	//按照两倍的大小快速扩容
+	offset := atomic.AddUint32(&s.n, sz)
+
+	if len(s.buf)-int(offset) < MaxNodeSize {
+		//扩容的大小
+		growBy := uint32(len(s.buf))
+		if growBy > 1<<30 {
+			growBy = 1 << 30
+		}
+		if growBy < sz {
+			growBy = sz
+		}
+
+		newBuf := make([]byte, len(s.buf)+int(growBy))
+		AssertTrue(len(s.buf) == copy(newBuf, s.buf))
+		s.buf = newBuf
+	}
+	return offset - sz
 }
 
 //在arena里开辟一块空间，用以存放sl中的节点
 //返回值为在arena中的offset
+
+func (s *Arena) putNode1() uint32 {
+
+	nodeSize := int(unsafe.Sizeof(Element{}))
+
+	//机器上分配一个32bit的unsigned interger memory size.
+	n := s.allocate((uint32(nodeSize)))
+
+	return n
+
+}
+
+func (s *Arena) putNode2(height int) uint32 {
+	// 减少不需要分配的heigth
+	return s.allocate(uint32(unsafe.Sizeof(Element{})) - uint32((MaxHeight-height)*offsetSize))
+}
+
 func (s *Arena) putNode(height int) uint32 {
 	//implement me here！！！
 	// 这里的 node 要保存 value 、key 和 next 指针值
 	// 所以要计算清楚需要申请多大的内存空间
-	return 0
+
+	need := uint32(unsafe.Sizeof(Element{})) - uint32(MaxHeight-height)*uint32(offsetSize)
+
+	return (need + uint32(nodeAlign)) &^ (uint32(nodeAlign))
+
 }
 
 func (s *Arena) putVal(v ValueStruct) uint32 {
@@ -51,7 +93,10 @@ func (s *Arena) putKey(key []byte) uint32 {
 	//implement me here！！！
 	//将  Key 值存储到 arena 当中
 	// 并且将指针返回，返回的指针值应被存储在 Node 节点中
-	return 0
+	offset := s.allocate(uint32(len(key)))
+	buf := s.buf[offset : offset+uint32(len(key))]
+	AssertTrue(len(key) == copy(buf, key))
+	return offset
 }
 
 func (s *Arena) getElement(offset uint32) *Element {
